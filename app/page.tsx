@@ -1,101 +1,170 @@
-import Image from "next/image";
+"use client";
+
+import type React from "react";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import ReviewList from "./components/review-list";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [urls, setUrls] = useState<string>("");
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("");
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    setStatus("Starting scraping process...");
+    setReviews([]);
+
+    try {
+      const urlArray = urls
+        .split("\n")
+        .map((url) => url.trim())
+        .filter((url) => url !== "");
+      setStatus(`Scraping ${urlArray.length} URLs...`);
+
+      const response = await fetch("/api/scrape", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ urls: urlArray }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to scrape reviews");
+      }
+
+      setReviews(data);
+      setStatus(`Scraped ${data.length} reviews successfully.`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
+      setStatus("Scraping failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveReviews = (format: "txt" | "csv") => {
+    let content: string;
+    let filename: string;
+    let mimeType: string;
+
+    if (format === "txt") {
+      content = reviews
+        .map(
+          (review) =>
+            `Product: ${review.product_title}\nReviewer: ${review.reviewer}\nRating: ${review.rating}\nDate: ${review.review_date}\nTitle: ${review.review_title}\nReview: ${review.review_body}\n\n`
+        )
+        .join("---\n");
+      filename = "amazon_reviews.txt";
+      mimeType = "text/plain";
+    } else {
+      // CSV format
+      const headers = [
+        "Product",
+        "Reviewer",
+        "Rating",
+        "Date",
+        "Title",
+        "Review",
+      ];
+      const csvContent = [
+        headers.join(","),
+        ...reviews.map((review) =>
+          [
+            review.product_title,
+            review.reviewer,
+            review.rating,
+            review.review_date,
+            review.review_title,
+            review.review_body,
+          ]
+            .map((field) => `"${field.replace(/"/g, '""')}"`)
+            .join(",")
+        ),
+      ].join("\n");
+      content = csvContent;
+      filename = "amazon_reviews.csv";
+      mimeType = "text/csv";
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <main className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Amazon Review Scraper</h1>
+      <Card>
+        <CardHeader>
+          <CardTitle>Enter Amazon Product URLs</CardTitle>
+          <CardDescription>
+            Add one or more Amazon product URLs to scrape reviews (one URL per
+            line)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit}>
+            <Textarea
+              placeholder="https://www.amazon.com/product-url-1&#10;https://www.amazon.com/product-url-2"
+              value={urls}
+              onChange={(e) => setUrls(e.target.value)}
+              rows={5}
+              className="mb-4"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Scraping..." : "Scrape Reviews"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+      {status && (
+        <Alert className="mt-4">
+          <AlertTitle>Status</AlertTitle>
+          <AlertDescription>{status}</AlertDescription>
+        </Alert>
+      )}
+      {error && (
+        <Alert variant="destructive" className="mt-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {reviews.length > 0 && (
+        <div className="mt-4 space-x-2">
+          <Button onClick={() => handleSaveReviews("csv")}>
+            Save Reviews as CSV
+          </Button>
+          <ReviewList reviews={reviews} />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      )}
+    </main>
   );
 }
